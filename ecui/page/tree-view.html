@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>可视化 树组件代码 生成器</title>
+    <link rel="stylesheet" href="../dep/ecui/2.1.2/dist/ecui.css" />
+    <link rel="stylesheet" href="../dep/rf-css/0.2.1/dist/rf.css" />
+    
+    <script src="../dep/esl/1.6.0/dist/esl.js"></script>
+    <script src="../dep/tangram/1.5.2/dist/tangram.js"></script>
+    <script src="../dep/ecui/2.1.2/dist/ecui.js"></script>
+</head>
+<body>
+    <div class="treeViewPanel" style="width: 350px;">
+        <div ecui="type:tree-view;id:myTreeView;">
+            <label node-id="-1">根节点</label>
+        </div>
+    </div>
+    
+    <div class="groups">
+        <span class="ui-button-g" ecui="type:button;id:addNodeButton">增加节点</span>
+        <span ecui="type:button;id:removeNodeButton;">删除节点</span>
+    </div>
+    
+    <hr />
+    
+    <span class="ui-button-g" ecui="type:button;id:outputHTMLButton;">生成html配置代码</span>
+    
+    <div class="footer">
+        © 2013 Baidu (v_lpx)
+    </div>
+    
+<script>
+    // 数据容器
+    var model = {};
+
+    // dom元素容器
+    var view = {};
+
+    var util = {
+        treeView: {
+            addNodes: function recursion(parentNode, dataList, processText) { //  recursion函数名 供递归时 使用
+                T.array.each(dataList, function (item) {
+                    var text = item.text;
+                    
+                    if (typeof processText === 'function') {
+                        text = processText.call(item, item.text, item.value);
+                        
+                        if (text === false) {
+                            return;
+                        }
+                        else if (text === undefined) {
+                            text = item.text;
+                        }
+                    }
+                    
+                    var newNode = parentNode.add(text);
+                    
+                    if (item.children.length > 0) {
+                        recursion(newNode, item.children, processText);
+                    }
+                });
+            }
+        }
+    };
+    
+    /**
+     * 初始化页面
+     */
+    function initView() {
+        model.nodeList = [];
+        model.nodeMap4List = {
+            '-1': {
+                childrenList: model.nodeList
+            }
+        };
+        
+        view = {
+            myTreeView: ecui.get('myTreeView'),
+            addNodeButton: ecui.get('addNodeButton'),
+            removeNodeButton: ecui.get('removeNodeButton'),
+            
+            outputHTMLButton: ecui.get('outputHTMLButton'),
+            
+            
+            1:1
+        };
+    }
+
+    /**
+     * 页面事件绑定
+     */
+    function bindEvents() {
+        var sysNodeId = 1;
+        
+        view.addNodeButton.onclick = function () {
+            var myTreeView = view.myTreeView;
+            var parentNode = myTreeView.getSelected()
+                            || myTreeView.getRoot();
+            var parentId = T.dom.getAttr(T.dom.first(parentNode.getMain()), 'node-id');
+            var newNodeName = null;
+            var targetNodeList = model.nodeMap4List[parentId].childrenList;
+            
+            ecui.confirm(
+                '<span id="newNodeName" ecui="type:input;id:newNodeName;tip:输入新节点名称"></span>',
+                function () {
+                    var text = newNodeName.getValue() || '新节点';
+                    var childNodeHTML = [
+                        '<span node-id="', sysNodeId, '">',
+                            text,
+                        '</span>'
+                    ].join('');
+                    var childNode = {
+                        text: text,
+                        nodeId: sysNodeId,
+                        children: []
+                    };
+                    targetNodeList.push(childNode);
+                    model.nodeMap4List[sysNodeId] = {
+                        parentList: targetNodeList,
+                        childrenList: childNode.children,
+                    };
+                    //  刷新页面上的考核指标规则树
+                    parentNode.add(childNodeHTML);
+                    sysNodeId++;
+                }
+            );
+            
+            newNodeName = ecui.init(T.dom.g('newNodeName')).newNodeName;
+        };
+        
+        view.removeNodeButton.onclick = function () {
+            var myTreeView = view.myTreeView;
+            var selectedNode = myTreeView.getSelected();
+            //  没有选择节点时，不进行删除操作
+            if (!selectedNode) {
+                return;
+            }
+            
+            ecui.confirm('删除选中的节点？', function () {
+                //  前端维护 考核规则指标树结构
+                if (selectedNode == myTreeView.getRoot()) {
+                    //  如果选中根节点进行删除，则清空该指标树（仅保留根节点）
+                    model.nodeList = [];
+                    model.nodeMap4List = {
+                        '-1': {
+                            childrenList: model.nodeList
+                        }
+                    };
+                    sysNodeId = 1;
+                }
+                else {
+                    var nodeId = T.dom.getAttr(T.dom.first(selectedNode.getMain()), 'node-id');
+                    var parentList = model.nodeMap4List[nodeId].parentList;
+                    //  对于 非根节点，需要从父节点的子节点数组中，找到该子节点进行删除
+                    var removeIndex;
+                    T.array.each(parentList, function (item, index) {
+                        if (item.nodeId === +nodeId) {
+                            removeIndex = index;
+                        }
+                    });
+                    T.array.removeAt(parentList, removeIndex);
+                    //  如果需要delete，还要delete该节点的子节点孙子节点等的map-key
+                    // delete model.nodeMap4List[nodeId];
+                }
+                
+                /*
+                 * 刷新页面上的考核指标规则树
+                 */
+                var oldTreeElement = myTreeView.getMain();
+                //  ①创建并初始化新节点
+                var newTreeElement = T.dom.create('div');
+                newTreeElement.innerHTML = [
+                    '<label node-id="-1">',
+                        '根节点',
+                    '</label>'
+                ].join('');
+                T.dom.setAttr(
+                    newTreeElement,
+                    'ecui', 'type:tree-view;id:myTreeView;'
+                );
+                //  ②将新节点插入到DOM中
+                T.dom.insertBefore(newTreeElement, oldTreeElement);
+                //  ③初始化新节点为ecui组件
+                var newNodeTree = ecui.init(newTreeElement).myTreeView;
+                //  ④析构旧组件，移除相应的DOM节点
+                myTreeView.dispose();
+                T.dom.remove(T.dom.next(oldTreeElement));   //  存放子节点的“容器”元素
+                T.dom.remove(oldTreeElement);
+                //  ⑤重置引用（否则会另绑定事件的方法失灵）
+                view.myTreeView = newNodeTree;
+                //  ⑥重新加载 指标树 节点信息
+                util.treeView.addNodes(
+                    newNodeTree.getRoot(),
+                    model.nodeList,
+                    function (text, value) {
+                        return [
+                            '<span node-id="', this.nodeId, '">',
+                                text,
+                            '</span>'
+                        ].join('');
+                    }
+                );
+            });
+        };
+        
+        function getNodeHTML(nodeDataList) {
+            var html = [];
+            
+            T.array.each(nodeDataList, function (nodeData) {
+                if (nodeData.children.length == 0) {
+                    html.push('    <div>' + nodeData.text + '</div>');
+                }
+                else {
+                    html.push('    <div>');
+                    html.push('        <label>' + nodeData.text + '</label>');
+                    html.push('    ' + getNodeHTML(nodeData.children));
+                    html.push('    </div>');
+                }
+            });
+            
+            return html.join('\n');
+        }
+        
+        view.outputHTMLButton.onclick = function () {
+            console.log(JSON.stringify(model.nodeList));
+            
+            ecui.alert([
+                '<textarea id="htmlCode" cols="70" rows="15">',
+                    '<div ecui="type:tree-view;id:myTestTreeView;">', '\n', '\n',
+                    '    <label>根节点</label>', '\n', '\n',
+                        getNodeHTML(model.nodeList), '\n', '\n',
+                    '</div>',
+                '</textarea>',
+                
+                '<hr />',
+                
+                '<input type="button" value="添加到body后面 看看效果？" ',
+                    'onclick="',
+                        'document.body.appendChild(document.createElement(\'div\'));',
+                        'document.body.lastChild.innerHTML = T.g(\'htmlCode\').value;',
+                        'ecui.init(document.body.lastChild);',
+                    '"',
+                ' />'
+            ].join(''));
+        };
+    }
+    
+    initView();
+    bindEvents();
+</script>
+</body>
+</html>
