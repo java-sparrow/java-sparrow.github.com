@@ -59,8 +59,12 @@
                 max-width: 780px;
                 margin: 0 auto;
             }
-            .link-paragraph a {
+            .link-paragraph a:after {
+                content: "";
                 display: block;
+                overflow: hidden;
+                height: 0;
+                line-height: 0;
             }
             .site-footer {
                 margin-top: 40px;
